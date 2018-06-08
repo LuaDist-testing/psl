@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "psl"
-version = "0.1-0"
+version = "0.2-0"
 -- LuaDist source
 source = {
-  tag = "0.1-0",
+  tag = "0.2-0",
   url = "git://github.com/LuaDist-testing/psl.git"
 }
 -- Original source
 -- source = {
--- 	url = "https://github.com/daurnimator/lua-psl/archive/v0.1.zip";
--- 	dir = "lua-psl-0.1";
+-- 	url = "https://github.com/daurnimator/lua-psl/archive/v0.2.zip";
+-- 	dir = "lua-psl-0.2";
 -- }
 description = {
 	summary = "Bindings to libpsl, a C library that handles the Public Suffix List (PSL)";

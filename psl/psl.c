@@ -7,9 +7,14 @@
 #include <lua.h>
 #include <lauxlib.h>
 
+#define LUAPSL_NAME "lua-psl"
+#define LUAPSL_DESCRIPTION "Bindings to libpsl"
+#define LUAPSL_VERSION "0.2"
+
 /* compatibility with lua 5.1 */
 #if defined(LUA_VERSION_NUM) && LUA_VERSION_NUM == 501
-void luaL_setmetatable(lua_State *L, const char *tname) {
+#define luaL_newmetatable(L, tn) (luaL_newmetatable(L, tn) ? (lua_pushstring(L, tn), lua_setfield(L, -2, "__name"), 1) : 0)
+static void luaL_setmetatable(lua_State *L, const char *tname) {
 	luaL_checkstack(L, 1, "not enough stack slots");
 	luaL_getmetatable(L, tname);
 	lua_setmetatable(L, -2);
@@ -21,11 +26,12 @@ void luaL_setmetatable(lua_State *L, const char *tname) {
 /* compatibility with lua 5.1 *and* 5.2 */
 #if defined(LUA_VERSION_NUM) && LUA_VERSION_NUM <= 502
 #define lua_getfield(L, i, k) (lua_getfield(L, i, k), lua_type(L, -1))
+#define luaL_getmetafield(L, o, e) (luaL_getmetafield(L, o, e) ? lua_type(L, -1) : LUA_TNIL)
 #endif
 
 static FILE *luapsl_checkFILE(lua_State *L, int idx) {
 #if defined(LUA_VERSION_NUM) && LUA_VERSION_NUM == 501
-	return luaL_checkudata(L, idx, "FILE*");
+	return *(FILE**)luaL_checkudata(L, idx, "FILE*");
 #else
 	luaL_Stream *stream = luaL_checkudata(L, idx, LUA_FILEHANDLE);
 	return stream->f;
@@ -59,13 +65,11 @@ static const psl_ctx_t *luapsl_checkpslctxnotnull(lua_State *L, int idx) {
 	return psl;
 }
 
+/* A __tostring like 5.3.4 */
 static int luapsl__tostring(lua_State *L) {
-	void *ud = lua_touserdata(L, 1);
-	const char* typename = "userdata";
-	if (lua_getmetatable(L, 1) && lua_getfield(L, -1, "__name")) {
-		typename = lua_tostring(L, -1);
-	}
-	lua_pushfstring(L, "%s: %p", typename, ud);
+	int tt = luaL_getmetafield(L, 1, "__name");
+	const char *kind = (tt == LUA_TSTRING) ? lua_tostring(L, -1) : luaL_typename(L, 1);
+	lua_pushfstring(L, "%s: %p", kind, lua_topointer(L, 1));
 	return 1;
 }
 
@@ -192,6 +196,29 @@ static int luapsl_is_cookie_domain_acceptable(lua_State *L) {
 	return 1;
 }
 
+static int luapsl_dist_filename(lua_State *L) {
+	const char *dist_filename = psl_dist_filename();
+	if (*dist_filename == '\0') {
+		lua_pushnil(L);
+	} else {
+		lua_pushstring(L, dist_filename);
+	}
+	return 1;
+}
+
+static int luapsl_latest(lua_State *L) {
+	const char *filename = luaL_optstring(L, 1, NULL);
+	const psl_ctx_t **ud = luapsl_preppslctx(L);
+	*ud = psl_latest(filename);
+	if (*ud == NULL) {
+		lua_pushnil(L);
+	} else if (*ud == psl_builtin()) {
+		*ud = NULL;
+		lua_pushvalue(L, lua_upvalueindex(1));
+	}
+	return 1;
+}
+
 static int luapsl_get_version(lua_State *L) {
 	lua_pushstring(L, psl_get_version());
 	return 1;
@@ -258,6 +285,9 @@ int luaopen_psl(lua_State *L) {
 #ifdef PSL_VERSION_NUMBER
 		{"builtin_outdated", luapsl_builtin_outdated},
 #endif
+#if defined(PSL_VERSION_NUMBER) && PSL_VERSION_NUMBER >= 0x001000
+		{"dist_filename", luapsl_dist_filename},
+#endif
 		{"get_version", luapsl_get_version},
 #if defined(PSL_VERSION_NUMBER) && PSL_VERSION_NUMBER >= 0x000b00
 		{"check_version_number", luapsl_check_version_number},
@@ -290,6 +320,12 @@ int luaopen_psl(lua_State *L) {
 	lua_pop(L, 1);
 
 	luaL_newlib(L, lib);
+	lua_pushliteral(L, LUAPSL_NAME);
+	lua_setfield(L, -2, "_NAME");
+	lua_pushliteral(L, LUAPSL_DESCRIPTION);
+	lua_setfield(L, -2, "_DESCRIPTION");
+	lua_pushliteral(L, LUAPSL_VERSION);
+	lua_setfield(L, -2, "_VERSION");
 
 #ifdef PSL_VERSION_NUMBER
 	lua_pushliteral(L, PSL_VERSION);
@@ -318,6 +354,11 @@ int luaopen_psl(lua_State *L) {
 
 	/* cache builtin as upvalue so same pointer is returned every time */
 	luapsl_pushpslctx(L, psl_builtin());
+#if defined(PSL_VERSION_NUMBER) && PSL_VERSION_NUMBER >= 0x001000
+	lua_pushvalue(L, -1);
+	lua_pushcclosure(L, luapsl_latest, 1);
+	lua_setfield(L, -3, "latest");
+#endif
 	lua_pushcclosure(L, luapsl_builtin, 1);
 	lua_setfield(L, -2, "builtin");
 
